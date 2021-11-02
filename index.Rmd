@@ -19,68 +19,185 @@ tidy=TRUE, tidy.opts=list(width.cutoff=60), R.options=list(max.print=100))
 
 ## Data Wrangling, Exploration, Visualization
 
-### Name and EID here
+### Rebecca Hernandez, rh36736
 
 #### Introduction 
 
 Paragraph or two introducing your datasets and variables, why they are interesting to you, etc.
 
 ```{R}
-# read your datasets in here, e.g., with read_csv()
-
+#Two things that define the Austin metro area is its lucrative real estate market and
+library(tidyverse)
+housing <- read_csv("/stor/home/rh36736/project1/austinHousingData.csv")
+restaurants <- read_csv("/stor/home/rh36736/project1/Austin_1000_Restaurants.csv")
+inspection <- read_csv("/stor/home/rh36736/project1/Restaurant_Inspection_Scores.csv")
 ```
+*Two things that define the Austin metro area is its lucrative real estate market and its variety of great restaurants to eat at. I found a data set on the Austin, TX real estate market from Kaggle, a data set of 1000 restaurants in Austin based on Yelp data from data.world, and a restaurant inspection data set from the city of Austin and wanted to see what some of the best areas to live in Austin are based on real estate and restaurant options. These are interesting to me because I love trying new restaurants and I plan on living in Austin after I graduate. When choosing a place to live there are so many factors to consider, but I thought joining these data sets would be a fun way to get a feel for what each part of Austin has to offer in terms of housing prices and restaurant choices. The housing data set contains several variables on the characteristics of the home such as room number, bathroom number, if it has a garage, and other numeric variables like price, tax rate, year built, etc. The restaurant data set has restaurant name, cuisine category, zipcode, address, yelp domain, phone number, and review count. The inspections data set has similar information  and also has inspection score, inspection date, and reason for inspection.*
+
 
 #### Tidying: Reshaping
 
 If your datasets are tidy already, demonstrate that you can reshape data with pivot wider/longer here (e.g., untidy and then retidy). Alternatively, it may be easier to wait until the wrangling section so you can reshape your summary statistics. Note here if you are going to do this.
 
 ```{R}
-# your tidying code (if applicable; can also wait until wrangling section)
+housing_clean <- housing %>% select(zipcode, latestPrice, lotSizeSqFt, propertyTaxRate) %>% distinct
+housing_clean %>% group_by(zipcode) %>% mutate(avg_Price_recent=mean(latestPrice)) %>% mutate(avg_SqFt=mean(lotSizeSqFt)) %>% mutate(avg_tax=mean(propertyTaxRate)) %>% select(-"latestPrice", -"lotSizeSqFt", -"propertyTaxRate") %>% distinct -> housing2
+
+restaurants %>% separate("Address", into=c("Address", "zipcode"), sep=",") %>% separate("Address", into=c("Number", "Street1", "Street2", "Type", sep=" ")) %>% separate("Street2", into=c("Street3", "City"), sep="Austin") %>% separate("Type", into=c("Street4", "City2"), sep="Austin") -> address_change
+address_change[is.na(address_change)] <- " "
+address_change %>% unite("Number", "Street1", "Street3", "Street4", col="Address", sep=" ") %>% separate("zipcode", into = c("State", "zipcode"), sep="TX") %>% select(-"City", -"City2", -" ", -"State") -> restaurant_address_clean
+restaurants_clean <- restaurant_address_clean %>% separate("Review Count", into=c("Review_Count", "R")) %>% select(-"Yelp Domain", -"Phone number", -"R", -"X1", -"Sub Category") %>% mutate("Review_Count"=as.numeric(Review_Count)) %>% mutate("zipcode"=as.numeric(zipcode))
+restaurants_clean %>% group_by(zipcode) %>% mutate(avg_review_count=mean(Review_Count)) %>% mutate(Category_Count=n())-> restaurants_clean
+restaurants_clean %>% select(zipcode, avg_review_count, Category_Count) %>% distinct -> restaurants2
+
+inspection_clean <- inspection %>% separate("Inspection Date", into=c("Month", "Day", "Year")) %>% rename("zipcode"="Zip Code") %>% rename("Name"="Restaurant Name") %>% separate("Address", into=c("Address", "S+Z", "Lat+Lon"), sep="\n") %>% select("Name", "zipcode", "Year", "Score", "Address") %>% mutate("Address"=str_to_title(Address)) %>% rename("Inspection_Score"="Score") %>% mutate("Inspection_Score"=as.numeric(Inspection_Score))
+inspection_clean %>% group_by(zipcode) %>% mutate(avg_Inspection_Score=mean(Inspection_Score)) %>% select(zipcode, avg_Inspection_Score) %>% distinct() -> inspection2
+
 ```
 
     
 #### Joining/Merging
 
 ```{R}
-# your joining code
-
-# your joining code
+inner_join(housing2, restaurants2, by="zipcode") -> h_r
+inner_join(h_r, inspection2, by="zipcode") -> fulldata
+head(fulldata)
 ```
 
-Discussions of joining here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+*My plan from the start was to join both data sets by zip code, that way I could analyze real estate market and restaurant options by zip code to determine which might be the best zip code for housing and food. Before joining, my housing data set had 48 rows, my restaurant data set had 51 rows, and my inspection data set had 55 rows. After joining all three data sets I have 44 rows. I chose to do an inner join so that the newly formed data set included zip codes that contained data from all three data sets. As a result, it looks like there were 4 zip codes from the housing data set that weren't in any of the other two data sets, 6 zip codes in the restaurant data set that weren't in the housing or inspection data set, and 11 zip codes that were in the inspections data set but not the other two. I also chose to do an inner join so that the variables I cleaned and maintained from each data set would be included for every zip code observation. So now for each zip code, I can look at average home price and restaurant availability at the same time. While the joined data is clean and ready to analyze, the only problem with the loss of zip codes from joining is that I have less data to work with and I won't get a full scope of information from all zip codes in the Austin metro area*
 
 ####  Wrangling
 
 ```{R}
-# your wrangling code
+fulldata %>% rename("price"="avg_Price_recent") %>% rename("sqft"="avg_SqFt") %>% rename("tax"="avg_tax") %>% rename("ReviewCount"="avg_review_count") %>% rename("CategoryCount"="Category_Count") %>% rename("InspectionScore"="avg_Inspection_Score") -> fulldata
 
-# your wrangling code
+#dplyr functions
+fulldata %>% group_by(zipcode) %>% summarise(mean=mean(sqft))
+fulldata %>% select(zipcode, sqft, CategoryCount) %>% arrange(sqft)
+fulldata %>% summarise(H_R_Ratio=(sqft/CategoryCount)) %>% arrange(H_R_Ratio)
+fulldata %>% mutate(full_price=price*tax)
 
-# your wrangling code
+# summary statistics - overall - mean, sd, var, n, quantile, min, max, n_distinct, cor
+fulldata1 <- fulldata %>% ungroup() %>% select(1:7) %>% summarise_each(funs(mean=mean, sd=sd, min=min, max=max, median=median))
+                                                          
+fulldata %>% ungroup() %>% summarise(quantile(price))
+fulldata %>% ungroup() %>% summarise(n_distinct(price))
+fulldata %>% ungroup() %>% summarise(r = cor(price, InspectionScore, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(price)/n_distinct(price)))
+
+fulldata %>% ungroup() %>% summarise(quantile(sqft))
+fulldata %>% ungroup() %>% summarise(n_distinct(sqft))
+fulldata %>% ungroup() %>% summarise(r = cor(sqft, InspectionScore, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(sqft)/n_distinct(sqft)))
+
+fulldata %>% ungroup() %>% summarise(quantile(tax))
+fulldata %>% ungroup() %>% summarise(n_distinct(tax))
+fulldata %>% ungroup() %>% summarise(r = cor(tax, InspectionScore, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(tax)/n_distinct(tax)))
+
+
+fulldata %>% ungroup() %>% summarise(quantile(ReviewCount))
+fulldata %>% ungroup() %>% summarise(n_distinct(ReviewCount))
+fulldata %>% ungroup() %>% summarize(r = cor(ReviewCount, price, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(ReviewCount)/n_distinct(ReviewCount)))
+
+fulldata %>% ungroup() %>% summarise(quantile(CategoryCount))
+fulldata %>% ungroup() %>% summarise(n_distinct(CategoryCount))
+fulldata %>% ungroup() %>% summarize(r = cor(CategoryCount, price, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(CategoryCount)/n_distinct(CategoryCount)))
+
+fulldata %>% ungroup() %>% summarise(quantile(InspectionScore))
+fulldata %>% ungroup() %>% summarise(n_distinct(InspectionScore))
+fulldata %>% ungroup() %>% summarize(r = cor(InspectionScore, price, use="pair"))
+fulldata %>% ungroup() %>% summarise(avg=(sum(InspectionScore)/n_distinct(InspectionScore)))
+
+fulldata %>% group_by(zipcode) %>% n_distinct #no NAs
+
+
+# summary statistics - grouped by  - mean, sd, var, n, quantile, min, max, n_distinct, cor, user defined function
+fulldata %>% group_by(tax) %>% select(1:7) %>% summarise_each(funs(mean=mean, sd=sd, var=var, min=min, max=max, median=median, n_distinct=n_distinct))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(price))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(price))
+fulldata %>% group_by(tax) %>% summarize(r = cor(price, InspectionScore, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(price)/n_distinct(price)))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(sqft))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(sqft))
+fulldata %>% group_by(tax) %>% summarize(r = cor(sqft, InspectionScore, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(sqft)/n_distinct(sqft)))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(zipcode))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(zipcode))
+fulldata %>% group_by(tax) %>% summarize(r = cor(zipcode, InspectionScore, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(zipcode)/n_distinct(zipcode)))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(ReviewCount))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(ReviewCount))
+fulldata %>% group_by(tax) %>% summarize(r = cor(ReviewCount, price, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(ReviewCount)/n_distinct(ReviewCount)))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(CategoryCount))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(CategoryCount))
+fulldata %>% group_by(tax) %>% summarize(r = cor(CategoryCount, price, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(CategoryCount)/n_distinct(CategoryCount)))
+
+fulldata %>% group_by(tax) %>% summarise(quantile(InspectionScore))
+fulldata %>% group_by(tax) %>% summarise(n_distinct(InspectionScore))
+fulldata %>% group_by(tax) %>% summarize(r = cor(InspectionScore, price, use="pair"))
+fulldata %>% group_by(tax) %>% summarise(avg=(sum(InspectionScore)/n_distinct(InspectionScore)))
+
+# table of summary statistics
+fulldata1 %>% pivot_longer(cols=(1:35), names_to="variable", values_to="value") %>% separate(variable, into=c("category", "stat"), sep="_") %>% pivot_wider(names_from="stat", values_from="value") -> table1_data
+table1_data
+
+library(gt)
+
+table1_data %>% gt %>%
+  tab_header(title=md("**Summary Statistics**"),
+             subtitle=md("A table of my `table1_data` summary statistics")) %>%
+  tab_spanner(label="Variables", columns=c("category", "mean","sd","min","max","median")) -> table1
+
+table1
+
 ```
 
-Your discussion of wrangling section here. Feel encouraged to break up into more than once code chunk and discuss each in turn.
+*For my first section, I used the six core dplyr functions. I first used group_by and arrange to group the data by zipcode and arrange the housing prices from highest to lowest to see where which zip codes have the most expensive houses. I then used select and arrange compare the lowest to highest square footage houses to the number of restaurants in each zip code. It looked like some of the zipcodes with the smallest average houses had the highest average number of restaurants. I was surprised to see that pattern that the next function I used was summarize to create a ratio of home square footage to number of restaurant. The zipcodes with the lowest numbers have a smaller square footage to larger restaurant option. Lastly, I used mutate to create a new variable that loked at home price multiplied times property tax rate.*
+
+*For the second portion I did summary statistics for each of my variables including mean, sd, var, n, quantile, min, max, n_distinct, and cor. All of my variables were numeric except for zipcode which I classified as a categorical variable so I performed a count for zip code to find 44 unique counts. There were no NA's. I also created a user-generate function to find mean. I do not have any variables that have text so I am unable to use any stringr functions.*
+
+*For the third portion, I did another set of summary statistics including mean, sd, var, n, quantile, min, max, n_distinct, and cor, but by grouping one of the variables. The data is already grouped by zipcode and since I don't have any other categorical variables, I converted the avg_tax variable into a categorical variable so that it would have 9 distinct categories to work with.*
+
+*The last portion includes a table of my summary statistics including mean, median, min, max, and sd for each of my variables.*
 
 
 #### Visualizing
 
 ```{R}
-# your plot 1
+library(ggplot2)
+fulldata %>% ggplot(aes(zipcode, CategoryCount)) + geom_density2d_filled() + geom_count(stat="summary") + scale_x_continuous(name="Zip Code", lim=c(78615,78760))+
+  scale_y_continuous(name="Number of Restaurants", lim=c(0,150))+ ggtitle("Number of Restaurants by Zip Code") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
-Your discussion of plot 1
+*This graph shows the zipcodes in Austin with the most and least expansive restaurant options by zipcode. While the original data set does not include every single restaurant that exists in Austin, this sample size gives us an idea of the the sample value of number of restaurants in proportion to each zip code. It appears that neighborhoods in the 78740-78760 have a dense amount of restaurant choices while the area containing the 78615-78715 have the least. It also appears that a zipcode in or around 78700 has some of the highest amounts of restaurant options.*
 
 ```{R}
-# your plot 2
+ggplot(fulldata, aes(x = zipcode, y = price, fill="red"))+
+  geom_bar(stat="summary")+
+  geom_errorbar(stat="summary")+
+  scale_x_continuous(name="Zip Code", lim=c(78615,78760))+
+  scale_y_continuous(name="Average Home Price", lim=c(0,1300000))+ ggtitle("Average Home price by Zip Code") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
-Your discussion of plot 2
+*If you've ever wondered what some of the most or least expensive places to live in Austin are by zip code, this graph is for you! This graph plots average home price by location (zip code). It does not show geographically where these locations are, but it demonstrates which zipcodes are home to some of Austin's most and least expensive homes*
 
 ```{R}
-# your plot 3
+fulldata %>% ggplot(aes(price, CategoryCount))+geom_point()+
+  scale_x_continuous(lim=c(150000,1000000))+
+  scale_y_continuous(lim=c(0,60)) + geom_smooth() + xlab("Average Home Price") + ylab("Number of Restaurants") + ggtitle("Restaurant Choices by Home Prices") + theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
 ```
 
-Your discussion of plot 3
+*The plot "Restaurant Choices by Home Price" is a graph that shows the relationship between number of restaurant options and home prices. This graph was to created to identify if a pattern exists among the two variables. It looks like there are slightly more restaurant options near more expensive houses and less options near houses on the less expensive side. It generally appears that some of the areas with the most restaurant options are located near houses in the middle of the Austin real estate market price range.*
 
 #### Concluding Remarks
 
